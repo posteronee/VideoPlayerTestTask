@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+//first commit
+
 @main
 struct VideoPlayerTestTaskApp: App {
     var body: some Scene {
