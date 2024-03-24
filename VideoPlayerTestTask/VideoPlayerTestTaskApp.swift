@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-//first commit
 
 @main
 struct VideoPlayerTestTaskApp: App {
