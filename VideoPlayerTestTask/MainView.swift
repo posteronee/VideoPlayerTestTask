@@ -15,6 +15,13 @@ struct MainView: View {
     @State private var isPlaying = false
     @State private var isFullScreen = false
     @State private var buttonsTimer: Timer?
+    
+    //slider states
+    @State private var isSeeking = false
+    @State private var isVideoEnded = false
+    @State private var progress: CGFloat = 0.0
+    @State private var lastProgress: CGFloat = 0.0
+    @GestureState private var isMoving = false
 
     var body: some View {
         let playerSize = CGSize(width: size.width, height: size.height / 3)
@@ -25,6 +32,12 @@ struct MainView: View {
                     .onTapGesture {
                         showButtons.toggle()
                         startButtonsTimer()
+                    }
+                    .overlay(alignment: .bottom){
+                        sliderView(videoSize: playerSize)
+                            .alignmentGuide(.bottom) { _ in
+                                return isFullScreen ? viewEdge.bottom + playerSize.height : 0
+                            }
                     }
                     .edgesIgnoringSafeArea(isFullScreen ? .all : [])
                     .onDisappear {
@@ -41,16 +54,33 @@ struct MainView: View {
                     .opacity((showButtons || !isPlaying) ? 1 : 0)
                     .overlay {
                         if showButtons || !isPlaying {
-                            DisplayButtons()
+                            displayButtons()
                         }
                     }
                     .edgesIgnoringSafeArea(isFullScreen ? .all : [])
             }
         }
+        .onAppear{
+            player?.addPeriodicTimeObserver(forInterval: .init(seconds: 1, preferredTimescale: 1), queue: .main) {time in
+                if let currentVideo = player?.currentItem{
+                    let totalDuration = currentVideo.duration.seconds
+                    guard let currentDuration = player?.currentTime().seconds else {return}
+                    let currentProgress = currentDuration / totalDuration
+                    if !isSeeking {
+                        progress = currentProgress
+                        lastProgress = progress
+                    }
+                    if currentProgress == 1{
+                        isVideoEnded = true
+                        isPlaying = false
+                    }
+                }
+            }
+        }
         .frame(width: playerSize.width, height: isFullScreen ? size.height : playerSize.height)
     }
 
-    @ViewBuilder func DisplayButtons() -> some View {
+    @ViewBuilder func displayButtons() -> some View {
         HStack {
             Button(action: {
                 if let player = player {
@@ -72,7 +102,7 @@ struct MainView: View {
                     player?.pause()
                 case false:
                     player?.play()
-                    isFullScreen ? nil : ButtonsTimeOut()
+                    isFullScreen ? nil : buttonsTimeOut()
                 }
                 isPlaying.toggle()
             }) {
@@ -126,8 +156,47 @@ struct MainView: View {
         }
     }
 
-    func ButtonsTimeOut() {
+    func buttonsTimeOut() {
         startButtonsTimer()
+    }
+    
+    @ViewBuilder func sliderView(videoSize: CGSize) -> some View {
+        ZStack(alignment: .leading){
+            Rectangle()
+                .fill(.gray)
+            Rectangle()
+                .fill(.red)
+                .frame(width: videoSize.width * progress)
+            
+        }.frame(height: 3)
+            .overlay(alignment: .leading){
+                Circle()
+                    .fill(.red)
+                    .frame(width: 10, height: 10)
+                    .offset(x: videoSize.width * progress)
+                    .scaleEffect(showButtons || isMoving ? 1 : 0)
+                    .gesture(
+                        DragGesture()
+                            .updating($isMoving) { _, out, _ in out = true}
+                            .onChanged { value in
+                                let x = value.translation.width
+                                let newProgress = x / videoSize.width + lastProgress
+                                self.progress = newProgress
+                                isSeeking = true
+                            }
+                            .onEnded{ value in
+                                lastProgress = progress
+                                if let currentVideo = player?.currentItem{
+                                    let totalDuration = currentVideo.duration.seconds
+                                    player?.seek(to: CMTime(seconds: totalDuration * progress, preferredTimescale: 1))
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    isSeeking = false
+                                }
+                            }
+                    
+                    )
+            }
     }
 }
 
