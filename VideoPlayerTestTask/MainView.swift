@@ -1,6 +1,6 @@
 import SwiftUI
 import AVKit
-// почти доделал режим fullscreen, нужно будет добавить перемотку ползунком и поправить архитектуру
+
 struct MainView: View {
     var size: CGSize
     var viewEdge: EdgeInsets
@@ -8,38 +8,46 @@ struct MainView: View {
     @State private var player: AVPlayer? = {
         guard let path = Bundle.main.path(forResource: "video", ofType: "mp4") else {
             return nil }
-        return AVPlayer(url: URL(filePath: path))
+        return AVPlayer(url: URL(fileURLWithPath: path))
     }()
 
     @State private var showButtons = false
     @State private var isPlaying = false
-    @State private var timeOut: DispatchWorkItem?
+    @State private var isFullScreen = false
+    @State private var buttonsTimer: Timer?
 
     var body: some View {
-        VStack(spacing: 0) {
-            let playerSize = CGSize(width: size.width, height: size.height / 3)
+        let playerSize = CGSize(width: size.width, height: size.height / 3)
 
-            ZStack(alignment: .topTrailing) {
-                if let player = player {
-                    VideoPlayer(player: player)
-                        .overlay(
-                            Rectangle()
-                                .fill(Color.black.opacity(0.3))
-                                .opacity(showButtons ? 1 : 0)
-                                .overlay{
-                                    if showButtons{
-                                        DisplayButtons()
-                                    }
-                                }
-                        )
-                        .onTapGesture {
-                            showButtons.toggle()
+        ZStack(alignment: .topTrailing) {
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onTapGesture {
+                        showButtons.toggle()
+                        startButtonsTimer()
+                    }
+                    .edgesIgnoringSafeArea(isFullScreen ? .all : [])
+                    .onDisappear {
+                        player.pause()
+                    }
+                    .onAppear {
+                        if isPlaying && isFullScreen {
+                            player.play()
                         }
-                    
-                }
+                    }
+
+                Rectangle()
+                    .fill(Color.black.opacity(0.3))
+                    .opacity((showButtons || !isPlaying) ? 1 : 0)
+                    .overlay {
+                        if showButtons || !isPlaying {
+                            DisplayButtons()
+                        }
+                    }
+                    .edgesIgnoringSafeArea(isFullScreen ? .all : [])
             }
-            .frame(width: playerSize.width, height: playerSize.height)
         }
+        .frame(width: playerSize.width, height: isFullScreen ? size.height : playerSize.height)
     }
 
     @ViewBuilder func DisplayButtons() -> some View {
@@ -59,13 +67,12 @@ struct MainView: View {
             }
 
             Button(action: {
-                switch isPlaying{
-                    case true:
-                        player?.pause()
-                    case false:
-                        player?.play()
-                        ButtonsTimeOut()
-                    
+                switch isPlaying {
+                case true:
+                    player?.pause()
+                case false:
+                    player?.play()
+                    isFullScreen ? nil : ButtonsTimeOut()
                 }
                 isPlaying.toggle()
             }) {
@@ -87,17 +94,20 @@ struct MainView: View {
                     .font(.title2)
                     .foregroundColor(.white)
                     .padding()
-                    
-            }        }
-        .frame(maxWidth: .infinity)
-        
+            }
+        }
         VStack {
             HStack {
                 Spacer()
                 Button(action: {
-                    print("fullscreen")
+                    isFullScreen.toggle()
+                    if isPlaying && isFullScreen {
+                        player?.play()
+                    } else if !isPlaying && !isFullScreen {
+                        player?.pause()
+                    }
                 }) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    Image(systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                         .font(.title2)
                         .foregroundColor(.white)
                         .padding()
@@ -105,20 +115,19 @@ struct MainView: View {
                 .padding(20)
             }
             Spacer()
+            .frame(maxWidth: .infinity)
         }
     }
-    func ButtonsTimeOut() {
-        if let timeOut{
-            timeOut.cancel()
-        }
-        
-        timeOut = DispatchWorkItem{
+
+    func startButtonsTimer() {
+        buttonsTimer?.invalidate()
+        buttonsTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
             showButtons = false
         }
-        
-        if let timeOut{
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: timeOut)
-        }
+    }
+
+    func ButtonsTimeOut() {
+        startButtonsTimer()
     }
 }
 
